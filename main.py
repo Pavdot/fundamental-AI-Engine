@@ -24,43 +24,58 @@ class NewsAnalysis(BaseModel):
     horizon_hours: int = Field(..., gt=0, description="The time horizon for the analysis in hours")
 
 
-def analyze_news(news):
+def call_llm(prompt): 
     response = client.chat.completions.create(
         model="openrouter/free",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""Analyze this financial news
-
-{news}
-
-Return ONLY valid JSON with these fields:
-- asset
-- direction
-- importance
-- confidence
-- horizon_hours
-
-Rules:
-- direction must be between -1 and 1
-- importance must be between 0 and 1
-- confidence must be between 0 and 1
-- horizon_hours must be a number"""
-            }
-        ]
+        messages=[{"role": "user", "content": prompt}]
     )
+
     content = response.choices[0].message.content
+    return content     
 
-    try:
-        data = json.loads(content)
-        result = NewsAnalysis(**data)
-        return result
-    except json.JSONDecodeError as error:
-        print("JSON error:", error)
-        return None
-    except ValidationError as error:
-        print("Validation error:", error)
-        return None
+def analyze_news(news):
 
-AAnalysis = analyze_news(news)
-print(AAnalysis)
+    previous_error = ""
+    prompt = f"""Analyze this financial news:
+    {news}
+
+    Return ONLY valid JSON with these fields:
+    - asset
+    - direction
+    - importance
+    - confidence
+    - horizon_hours
+
+    Rules:
+    - direction must be between -1 and 1
+    - importance must be between 0 and 1
+    - confidence must be between 0 and 1
+    - horizon_hours must be a positive integer"""
+
+    for attempt in range(3):
+        print(f"Tentative {attempt + 1}")
+
+        
+        if previous_error:
+                prompt += f"""
+                Your previous response was invalid because:
+                {previous_error}
+
+                Correct the error and return valid JSON.
+                """
+        
+        content = call_llm(prompt)
+        
+        try:
+            data = json.loads(content)
+            result = NewsAnalysis(**data)
+            return result
+
+        except (json.JSONDecodeError, ValidationError) as error:
+                previous_error = str(error)
+                print(f"Tentative {attempt + 1}/3 échouée : {error}")
+
+    raise RuntimeError("Analysis failed after 3 attempts")
+
+analysis = analyze_news(news)
+print(analysis)
