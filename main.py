@@ -4,6 +4,9 @@ from pydantic import BaseModel, Field
 from pydantic import ValidationError
 from dotenv import load_dotenv  
 from openai import OpenAI 
+import news_api
+from processor import NewsProcessor
+import sqlite3
 
 load_dotenv()
 api_key = os.getenv("OPENROUTER_API_KEY")
@@ -12,8 +15,6 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=api_key
 )
-
-news = "Bitcoin fell 12% after a major cryptocurrency exchange suspended withdrawals."
 
 
 class NewsAnalysis(BaseModel):
@@ -68,7 +69,7 @@ def analyze_news(news):
         
         try:
             data = json.loads(content)
-            result = NewsAnalysis(**data)
+            result = NewsAnalysis.model_validate(data)
             return result
 
         except (json.JSONDecodeError, ValidationError) as error:
@@ -77,5 +78,12 @@ def analyze_news(news):
 
     raise RuntimeError("Analysis failed after 3 attempts")
 
-analysis = analyze_news(news)
-print(analysis)
+if __name__ == "__main__":
+    news = news_api.fetch_news()
+    article = news[0]
+    processor = NewsProcessor()
+
+    analysis = analyze_news(article["headline"])
+
+    print("ID :", article["id"])
+    print("Analyse :", analysis)
