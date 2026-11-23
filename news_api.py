@@ -1,25 +1,28 @@
-import os 
-import requests 
-from dotenv import load_dotenv
-from processor import NewsProcessor
+import os
+
+import requests
 
 
-load_dotenv()
+class NewsFetchError(RuntimeError):
+    pass
+
 
 def fetch_news():
-    response=requests.get("https://finnhub.io/api/v1/news"
-    , params = {"category":"general",
-    "token":os.getenv("FINNHUB_API_KEY")},
-    timeout = 15)
-    
-    return response.json()
+    token = os.getenv("FINNHUB_API_KEY")
+    if not token:
+        raise NewsFetchError("FINNHUB_API_KEY is required")
 
-result = fetch_news()
+    try:
+        response = requests.get(
+            "https://finnhub.io/api/v1/news",
+            params={"category": "general", "token": token},
+            timeout=15,
+        )
+        response.raise_for_status()
+        articles = response.json()
+    except requests.RequestException:
+        raise NewsFetchError("Finnhub request failed or returned invalid JSON") from None
 
-if __name__ == "__main__":
-    articles = fetch_news() 
-    processor = NewsProcessor()
-
-    for article in articles[:3]:
-        if processor.add_news(article["id"]):
-            print(article["id"], article["headline"])
+    if not isinstance(articles, list):
+        raise NewsFetchError("Finnhub did not return a list of articles")
+    return articles
