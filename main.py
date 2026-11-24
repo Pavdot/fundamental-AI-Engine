@@ -84,7 +84,8 @@ def analyze_news(news, target=None):
 
 def run_once(connection, max_age_hours=24, limit=5, telegram=None):
     failures = 0
-    attempts = 0
+    attempts = saved = already_analyzed = examined = recent = matching = 0
+    logging.info("Récupération des actualités Finnhub (fenêtre de %s h)…", max_age_hours)
     try:
         articles = fetch_news()
     except NewsFetchError as error:
@@ -95,6 +96,7 @@ def run_once(connection, max_age_hours=24, limit=5, telegram=None):
     fetched_at = int(time.time())
     cutoff = fetched_at - max_age_hours * 3600
     for article in articles:
+        examined += 1
         if not isinstance(article, dict):
             continue
         article_id = article.get("id")
@@ -105,6 +107,7 @@ def run_once(connection, max_age_hours=24, limit=5, telegram=None):
                 or type(published) is not int or not cutoff <= published <= fetched_at):
             continue
 
+        recent += 1
         summary = article.get("summary")
         summary = summary if isinstance(summary, str) else ""
         article = {
@@ -113,7 +116,9 @@ def run_once(connection, max_age_hours=24, limit=5, telegram=None):
             "url": article.get("url") if isinstance(article.get("url"), str) else None,
         }
         news = f"{headline}\n{summary}"
-        for target in candidate_assets(news):
+        targets = candidate_assets(news)
+        matching += bool(targets)
+        for target in targets:
             if attempts >= limit:
                 break
             try:
@@ -122,6 +127,7 @@ def run_once(connection, max_age_hours=24, limit=5, telegram=None):
                     # cannot both call the LLM for the same article and asset.
                     connection.execute("BEGIN IMMEDIATE")
                     if analysis_exists(connection, article_id, target):
+                        already_analyzed += 1
                         continue
                     attempts += 1
                     analysis = analyze_news(news, target)
@@ -135,7 +141,13 @@ def run_once(connection, max_age_hours=24, limit=5, telegram=None):
                         os.getenv("OPENROUTER_MODEL", DEFAULT_MODEL),
                         PROMPT_VERSION, int(time.time()), enqueue,
                     )
-                logging.info("Article %s (%s): analysis saved", article_id, target)
+                saved += 1
+                logging.info(
+                    "Analyse enregistrée pour %s (%s) · direction %+.2f · importance %.2f "
+                    "· confiance %.2f · horizon %s h",
+                    target, analysis.asset, analysis.direction, analysis.importance,
+                    analysis.confidence, analysis.horizon_hours,
+                )
             except (APIError, AnalysisError) as error:
                 failures += 1
                 logging.warning("Article %s (%s): %s", article_id, target, type(error).__name__)
@@ -144,6 +156,11 @@ def run_once(connection, max_age_hours=24, limit=5, telegram=None):
 
     if telegram is not None:
         failures += send_pending(connection, *telegram)
+    logging.info(
+        "Bilan · articles reçus %s · examinés %s · récents et valides %s · retenus %s "
+        "· analyses existantes %s · enregistrées %s · erreurs %s",
+        len(articles), examined, recent, matching, already_analyzed, saved, failures,
+    )
     return failures
 
 

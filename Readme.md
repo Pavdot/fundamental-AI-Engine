@@ -44,11 +44,34 @@ délai réseau ou une interruption de processus, vérifier les alertes
 `uncertain` ou `sending` dans le chat avant toute remise en `pending`.
 Cette vérification évite de renvoyer un message potentiellement reçu.
 
-## Tests
+## Consulter les analyses avec MCP
 
-```sh
-python -m pip install pytest
-python -m pytest -q
+Depuis PowerShell, dans le dossier du projet, utilise le même Python pour
+l’installation et le lancement.
+
+```powershell
+py -m pip install -r requirements.txt
+py mcp_client.py BTCUSDT
+py mcp_client.py BTCUSDT --limit 1
+py mcp_client.py XAUUSD
 ```
 
-Les tests utilisent des réponses simulées et des bases SQLite temporaires.
+Ces commandes créent une base temporaire avec deux analyses Bitcoin fictives.
+Le client affiche le nom de l’outil découvert, ses arguments et le résultat
+JSON. La dernière commande renvoie une liste vide. Pour lire ta vraie base,
+lance `py mcp_client.py BTCUSDT --db test-live.db`.
+
+Pour que Codex choisisse lui-même quand appeler l’outil, ajoute le serveur
+MCP local dans Codex avec **le chemin absolu de ton interpréteur Python**
+comme commande et les arguments suivants.
+
+```text
+C:/chemin/fundamental-AI-Engine/mcp_server.py --db C:/chemin/fundamental-AI-Engine/test-live.db
+```
+
+Le serveur utilise le transport stdio et ne requiert aucune clé API. Tu peux
+ensuite poser ces trois questions à Codex.
+
+1. « Quelles sont les deux dernières analyses BTCUSDT dans ma base ? »
+2. « Donne-moi seulement le titre et le lien de la dernière analyse BTCUSDT. »
+3. « As-tu une analyse XAUUSD ? Si la base n’en contient aucune, dis-le. »
